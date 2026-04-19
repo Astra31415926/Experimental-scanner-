@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SCI Lab Scanner</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --surface: #141414;
+            --border: #333;
+            --text: #e0e0e0;
+            --accent: #ffffff;
+            --red: #FF004D;
+            --green: #00FF41;
+            --blue: #0088FF;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Header Tabs */
+        .tabs {
+            display: flex;
+            background: #000;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        .tab {
+            flex: 1;
+            padding: 15px;
+            text-align: center;
+            font-weight: 600;
+            cursor: pointer;
+            opacity: 0.4;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .tab.active {
+            opacity: 1;
+            border-bottom-color: var(--accent);
+        }
+        .tab.r.active { border-bottom-color: var(--red); color: var(--red); }
+        .tab.g.active { border-bottom-color: var(--green); color: var(--green); }
+        .tab.b.active { border-bottom-color: var(--blue); color: var(--blue); }
+
+        /* Main Content */
+        .main-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            padding-bottom: 20px;
+        }
+
+        /* Canvas Area */
+        .canvas-wrapper {
+            position: relative;
+            width: 100%;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 250px;
+            border-bottom: 1px solid var(--border);
+        }
+        #canvas-display {
+            max-width: 100%;
+            max-height: 100%;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+        #video-source {
+            display: none;
+        }
+
+        /* Controls */
+        .controls-panel {
+            padding: 15px;
+            background: var(--surface);
+            border-radius: 12px;
+            margin: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+
+        .slider-group {
+            margin-bottom: 15px;
+        }
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 12px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .slider-val {
+            color: var(--accent);
+            background: #222;
+            padding: 1px 6px;
+            border-radius: 4px;
+        }
+        
+        input[type=range] {
+            width: 100%;
+            background: transparent;
+            -webkit-appearance: none;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            background: #333;
+            border-radius: 2px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            height: 16px; width: 16px;
+            border-radius: 50%;
+            background: var(--accent);
+            -webkit-appearance: none;
+            margin-top: -6px;
+            cursor: pointer;
+        }
+        .tab.r input[type=range]::-webkit-slider-thumb { background: var(--red); }
+        .tab.g input[type=range]::-webkit-slider-thumb { background: var(--green); }
+        .tab.b input[type=range]::-webkit-slider-thumb { background: var(--blue); }
+
+        /* Results */
+        .results-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            padding: 0 15px;
+        }
+        .result-box {
+            background: #111;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 10px;
+            border: 1px solid #222;
+            transition: all 0.3s;
+            min-height: 40px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .result-box.success {
+            border-color: var(--green);
+            background: rgba(0, 255, 65, 0.1);
+            color: var(--green);
+        }
+        .result-label {
+            font-weight: bold;
+            margin-bottom: 4px;
+            opacity: 0.7;
+        }
+        .result-text {
+            font-family: 'JetBrains Mono', monospace;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Button */
+        .btn-start {
+            display: block;
+            width: calc(100% - 30px);
+            margin: 15px auto;
+            padding: 12px;
+            background: #fff;
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Tabs -->
+    <div class="tabs">
+        <div class="tab r active" onclick="switchTab('R')">RED</div>
+        <div class="tab g" onclick="switchTab('G')">GREEN</div>
+        <div class="tab b" onclick="switchTab('B')">BLUE</div>
+    </div>
+
+    <div class="main-container">
+        <!-- Canvas Display -->
+        <div class="canvas-wrapper">
+            <canvas id="canvas-display"></canvas>
+            <video id="video-source" playsinline></video>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls-panel">
+            <div class="slider-group">
+                <div class="slider-header">
+                    <span>Offset (Смещение)</span>
+                    <span class="slider-val" id="val-offset">0</span>
+                </div>
+                <input type="range" id="sl-offset" min="-100" max="100" value="0" step="1" oninput="updateParam('offset', this.value)">
+            </div>
+            <div class="slider-group">
+                <div class="slider-header">
+                    <span>Gain (Усиление)</span>
+                    <span class="slider-val" id="val-gain">1.0</span>
+                </div>
+                <input type="range" id="sl-gain" min="0.0" max="5.0" value="1.0" step="0.1" oninput="updateParam('gain', this.value)">
+            </div>
+            <div class="slider-group">
+                <div class="slider-header">
+                    <span id="label-k1">k1 (Вычесть Канал 1)</span>
+                    <span class="slider-val" id="val-k1">0.0</span>
+                </div>
+                <input type="range" id="sl-k1" min="0.0" max="2.0" value="0.0" step="0.01" oninput="updateParam('k1', this.value)">
+            </div>
+            <div class="slider-group">
+                <div class="slider-header">
+                    <span id="label-k2">k2 (Вычесть Канал 2)</span>
+                    <span class="slider-val" id="val-k2">0.0</span>
+                </div>
+                <input type="range" id="sl-k2" min="0.0" max="2.0" value="0.0" step="0.01" oninput="updateParam('k2', this.value)">
+            </div>
+            <div class="slider-group">
+                <div class="slider-header">
+                    <span>Bradley Window (Окно)</span>
+                    <span class="slider-val" id="val-win">8</span>
+                </div>
+                <input type="range" id="sl-win" min="2" max="64" value="8" step="1" oninput="updateParam('win', this.value)">
+            </div>
+            <div class="slider-group">
+                <div class="slider-header">
+                    <span>Bradley S (Чувств.)</span>
+                    <span class="slider-val" id="val-sens">0.15</span>
+                </div>
+                <input type="range" id="sl-sens" min="0.01" max="0.50" value="0.15" step="0.01" oninput="updateParam('sens', this.value)">
+            </div>
+        </div>
+
+        <button class="btn-start" onclick="toggleCamera()">Запустить Камеру</button>
+
+        <!-- Results -->
+        <div class="results-grid">
+            <div class="result-box" id="res-r-box">
+                <div class="result-label">RED Result</div>
+                <div class="result-text" id="res-r-text">—</div>
+            </div>
+            <div class="result-box" id="res-g-box">
+                <div class="result-label">GREEN Result</div>
+                <div class="result-text" id="res-g-text">—</div>
+            </div>
+            <div class="result-box" id="res-b-box">
+                <div class="result-label">BLUE Result</div>
+                <div class="result-text" id="res-b-text">—</div>
+            </div>
+        </div>
+    </div>
+
+<script>
+    // === STATE & CONFIG ===
+    const state = {
+        activeChannel: 'R',
+        isRunning: false,
+        results: { R: null, G: null, B: null },
+        config: {
+            R: { offset: 0, gain: 1.0, k1: 0.0, k2: 0.0, win: 8, sens: 0.15, neighbors: ['G', 'B'] },
+            G: { offset: 0, gain: 1.0, k1: 0.0, k2: 0.0, win: 8, sens: 0.15, neighbors: ['R', 'B'] },
+            B: { offset: 0, gain: 1.0, k1: 0.0, k2: 0.0, win: 8, sens: 0.15, neighbors: ['R', 'G'] }
+        }
+    };
+
+    const els = {
+        video: document.getElementById('video-source'),
+        canvas: document.getElementById('canvas-display'),
+        ctx: document.getElementById('canvas-display').getContext('2d', { willReadFrequently: true })
+    };
+
+    // === 1. UI LOGIC ===
+    
+    function switchTab(ch) {
+        state.activeChannel = ch;
+        
+        // Update Tab UI
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelector(`.tab.${ch.toLowerCase()}`).classList.add('active');
+
+        // Update Slider Labels dynamically
+        const conf = state.config[ch];
+        const n1 = conf.neighbors[0]; // e.g. if R, n1 is G
+        const n2 = conf.neighbors[1]; // e.g. if R, n2 is B
+        
+        document.getElementById('label-k1').innerText = `k1 (Вычесть ${n1})`;
+        document.getElementById('label-k2').innerText = `k2 (Вычесть ${n2})`;
+
+        // Load saved values into sliders
+        loadParamsToUI(ch);
+    }
+
+    function loadParamsToUI(ch) {
+        const conf = state.config[ch];
+        // Set slider positions
+        document.getElementById('sl-offset').value = conf.offset;
+        document.getElementById('sl-gain').value = conf.gain;
+        document.getElementById('sl-k1').value = conf.k1;
+        document.getElementById('sl-k2').value = conf.k2;
+        document.getElementById('sl-win').value = conf.win;
+        document.getElementById('sl-sens').value = conf.sens;
+
+        // Update display values
+        document.getElementById('val-offset').innerText = conf.offset;
+        document.getElementById('val-gain').innerText = conf.gain.toFixed(2);
+        document.getElementById('val-k1').innerText = conf.k1.toFixed(2);
+        document.getElementById('val-k2').innerText = conf.k2.toFixed(2);
+        document.getElementById('val-win').innerText = conf.win;
+        document.getElementById('val-sens').innerText = conf.sens.toFixed(2);
+    }
+
+    function updateParam(key, value) {
+        const ch = state.activeChannel;
+        // Parse numbers
+        let val = parseFloat(value);
+        if (key === 'offset' || key === 'win') val = parseInt(value);
+
+        state.config[ch][key] = val;
+
+        // Update display label
+        const displayEl = document.getElementById(`val-${key === 'sens' ? 'sens' : key}`);
+        if(key === 'win' || key === 'offset') displayEl.innerText = val;
+        else displayEl.innerText = val.toFixed(2);
+    }
+
+    // === 2. CORE PROCESSING ===
+
+    function processFrame() {
+        if (!state.isRunning) return;
+
+        const video = els.video;
+        const canvas = els.canvas;
+        const ctx = els.ctx;
+
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+            // Resize canvas to match video aspect ratio roughly
+            if (canvas.width !== 480) {
+                canvas.width = 480;
+                canvas.height = 480;
+            }
+
+            // Draw snapshot
+            const size = Math.min(video.videoWidth, video.videoHeight);
+            const sx = (video.videoWidth - size) / 2;
+            const sy = (video.videoHeight - size) / 2;
+            ctx.drawImage(video, sx, sy, size, size, 0, 0, 480, 480);
+
+            const imgData = ctx.getImageData(0, 0, 480, 480);
+            
+            // === PIPELINE START ===
+            
+            // 1. Create Independent Copy
+            const src = new Uint8ClampedArray(imgData.data);
+            const conf = state.config[state.activeChannel];
+
+            // Prepare single channel buffer for processing
+            // We will overwrite imgData with the processed result for display
+            const processedBuffer = new Uint8ClampedArray(480 * 480);
+
+            // 2. SCI Cleanup
+            for (let i = 0; i < src.length; i += 4) {
+                let r = src[i], g = src[i+1], b = src[i+2];
+                let target, n1, n2;
+
+                // Map channels based on active tab
+                if (state.activeChannel === 'R') {
+                    target = r; n1 = g; n2 = b;
+                } else if (state.activeChannel === 'G') {
+                    target = g; n1 = r; n2 = b;
+                } else {
+                    target = b; n1 = r; n2 = g;
+                }
+
+                // Formula: res = (Target - (N1*k1 + N2*k2)) * Gain + Offset
+                let res = (target - (n1 * conf.k1 + n2 * conf.k2)) * conf.gain + conf.offset;
+                
+                // Clamp
+                res = Math.max(0, Math.min(255, res));
+                
+                // Store for Bradley
+                processedBuffer[i/4] = res;
+
+                // Write grayscale to canvas for preview (before Bradley)
+                imgData.data[i] = res;
+                imgData.data[i+1] = res;
+                imgData.data[i+2] = res;
+                imgData.data[i+3] = 255;
+            }
+
+            // 3. Apply Bradley Adaptive Threshold
+            // We pass imgData so we can update the canvas directly
+            applyBradley(processedBuffer, imgData, 480, 480, conf.win, conf.sens);
+
+            // Put processed data back to canvas
+            ctx.putImageData(imgData, 0, 0);
+
+            // 4. Scanning
+            // We scan the ACTIVE channel mostly for responsiveness in this "Lab" mode
+            // But we could loop all. Let's scan active.
+            const code = jsQR(imgData.data, 480, 480, { inversionAttempts: "dontInvert" });
+            
+            if (code) {
+                state.results[state.activeChannel] = code.data;
+                updateResultUI(state.activeChannel, code.data);
+                drawOverlay(code.location); // Visual feedback
+            }
+        }
+
+        requestAnimationFrame(processFrame);
+    }
+
+    // === 3. BRADLEY ALGORITHM ===
+    
+    function applyBradley(srcGrayBuffer, outImgData, w, h, windowSize, sensitivity) {
+        // srcGrayBuffer: Uint8ClampedArray (w*h size, just values)
+        // outImgData: ImageData object (to write binary result to)
+        
+        const intImg = new Int32Array(w * h);
+        
+        // Compute Integral Image
+        for (let y = 0; y < h; y++) {
+            let sum = 0;
+            for (let x = 0; x < w; x++) {
+                const idx = y * w + x;
+                sum += srcGrayBuffer[idx];
+                intImg[idx] = (y > 0 ? intImg[(y - 1) * w + x] : 0) + sum;
+            }
+        }
+
+        // Apply Threshold
+        const s = windowSize; 
+        const t = sensitivity; 
+        
+        // Iterate pixels
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                // Define Window Bounds
+                const x1 = Math.max(0, x - s);
+                const x2 = Math.min(w - 1, x + s);
+                const y1 = Math.max(0, y - s);
+                const y2 = Math.min(h - 1, y + s);
+
+                const count = (x2 - x1) * (y2 - y1);
+                
+                // Sum from Integral Image
+                // I(x,y) = I(x2,y2) - I(x1-1, y2) - I(x2, y1-1) + I(x1-1, y1-1)
+                // Careful with indices (y1 is inclusive, y1-1 is exclusive for subtraction)
+                // Simplified sum: A - B - C + D
+                const A = intImg[y2 * w + x2];
+                const B = y1 > 0 ? intImg[(y1 - 1) * w + x2] : 0;
+                const C = x1 > 0 ? intImg[y2 * w + (x1 - 1)] : 0;
+                const D = (y1 > 0 && x1 > 0) ? intImg[(y1 - 1) * w + (x1 - 1)] : 0;
+                
+                const sum = A - B - C + D;
+
+                const val = srcGrayBuffer[y * w + x];
+                
+                // Bradley Formula: val < (average * (1 - t))
+                // Average = sum / count
+                if (val * count < sum * (1.0 - t)) {
+                    // Black
+                    const pIdx = (y * w + x) * 4;
+                    outImgData.data[pIdx] = 0;
+                    outImgData.data[pIdx+1] = 0;
+                    outImgData.data[pIdx+2] = 0;
+                } else {
+                    // White
+                    const pIdx = (y * w + x) * 4;
+                    outImgData.data[pIdx] = 255;
+                    outImgData.data[pIdx+1] = 255;
+                    outImgData.data[pIdx+2] = 255;
+                }
+            }
+        }
+    }
+
+    function drawOverlay(loc) {
+        const ctx = els.ctx;
+        ctx.strokeStyle = '#00FF00';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(loc.topLeftCorner.x, loc.topLeftCorner.y);
+        ctx.lineTo(loc.topRightCorner.x, loc.topRightCorner.y);
+        ctx.lineTo(loc.bottomRightCorner.x, loc.bottomRightCorner.y);
+        ctx.lineTo(loc.bottomLeftCorner.x, loc.bottomLeftCorner.y);
+        ctx.closePath();
+        ctx.stroke();
+    }
+
+    function updateResultUI(ch, text) {
+        const box = document.getElementById(`res-${ch.toLowerCase()}-box`);
+        const txt = document.getElementById(`res-${ch.toLowerCase()}-text`);
+        
+        box.classList.add('success');
+        txt.innerText = text;
+    }
+
+    // === 4. CAMERA INIT ===
+    async function toggleCamera() {
+        if (state.isRunning) {
+            state.isRunning = false;
+            els.video.pause();
+            return;
+        }
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: "environment", width: { ideal: 1280 } }
+            });
+            els.video.srcObject = stream;
+            els.video.play();
+            state.isRunning = true;
+            requestAnimationFrame(processFrame);
+        } catch (e) {
+            alert("Camera Error: " + e.message);
+        }
+    }
+
+    // Init UI
+    switchTab('R');
+
+</script>
+</body>
+</html>
