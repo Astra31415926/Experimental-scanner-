@@ -197,7 +197,6 @@
             <div class="py-0">
                 <a href="#" onclick="openModal('usage')" class="block px-4 py-3.5 text-xs text-zinc-300 hover:bg-zinc-800 border-b border-white/5">Як користуватися</a>
                 <a href="#" onclick="openModal('tech')" class="block px-4 py-3.5 text-xs text-zinc-300 hover:bg-zinc-800 border-b border-white/5">Технологія</a>
-                <a href="#" onclick="const vcard='BEGIN:VCARD\nVERSION:3.0\nFN:Mykhailo Kashkarov\nEMAIL:bakminsterfuler@gmail.com\nEND:VCARD'; const blob=new Blob([vcard],{type:'text/vcard'}); const url=window.URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='Contact.vcf'; a.click(); window.URL.revokeObjectURL(url); return false;" class="block px-4 py-3.5 text-xs text-blue-400 hover:bg-zinc-800 border-b border-white/5">Скачати vCard</a>
                 <button onclick="globalReset()" class="w-full text-left px-4 py-3.5 text-xs text-red-400 hover:bg-zinc-800 font-bold uppercase tracking-wide">Reset All</button>
             </div>
         </div>
@@ -276,15 +275,6 @@
         <p class="text-[8px] text-zinc-600">© 2026 SCI Universal Model. All Rights Reserved.</p>
     </footer>
 
-    <!-- Modal -->
-    <div id="modal-overlay" class="modal-overlay fixed inset-0 z-[200] flex items-center justify-center p-6">
-        <div class="modal-content w-full max-w-md bg-zinc-900/95 border border-white/10 rounded-3xl p-6 shadow-2xl relative max-h-[80vh] overflow-y-auto backdrop-blur-xl">
-            <button onclick="closeModal()" class="absolute top-4 right-4 text-zinc-500 hover:text-white text-xs font-bold border border-white/10 px-3 py-1 rounded-lg hover:bg-zinc-800 transition-colors">CLOSE</button>
-            <h2 id="modal-title" class="text-lg font-bold mb-4"></h2>
-            <div id="modal-body" class="text-sm text-zinc-300 space-y-4 leading-relaxed"></div>
-        </div>
-    </div>
-
 <script>
     // === TRANSLATIONS & UI SETUP ===
     const translations = {
@@ -315,93 +305,44 @@
         dropdown: document.getElementById('dropdown')
     };
 
-    // === CORE STATE (New Logic) ===
+    // === CORE STATE ===
     const state = {
         scanning: false,
         locked: { r: false, g: false, b: false },
         results: { r: null, g: null, b: null },
-        currentChannelIndex: 0,     // 0=R, 1=G, 2=B для round-robin
-        frameSkip: 0,
-        FRAME_SKIP_MAX: 3,
+        
+        // New Logic State
+        time: 0,
+        activeSearch: false,
+        standardFailCount: 0,
+        AUTO_TRIGGER_THRESHOLD: 50,
+        config: {
+            R: { gain: 1.0, offset: 0, k1: 0.15, k2: 0.25 },
+            G: { gain: 1.0, offset: 0, k1: 0.15, k2: 0.25 },
+            B: { gain: 1.0, offset: 0, k1: 0.15, k2: 0.25 }
+        },
         accumulationStart: null,
-        ACC_DURATION: 4000 // 4 seconds
+        ACC_DURATION: 4000
     };
 
-    // Reusable buffers
-    let workBuffer = null;
+    let lastFrameTime = 0;
+    const FPS_LIMIT = 12; // 10-15 scans per second
 
-    // === SMART CONTROLLER ===
-    class SmartController {
-        constructor() {
-            this.gain = 1.0;
-            this.offset = 0;
-            this.k1 = 0.15;
-            this.k2 = 0.25;
-            this.prevBrightRatio = 0.5;
-            this.failStreak = 0;
-        }
-
-        updateMetrics(imgData) {
-            const d = imgData.data;
-            let bright = 0, sum = 0, sumSq = 0;
-            const len = d.length / 4;
-
-            for (let i = 0; i < d.length; i += 4) {
-                const v = d[i]; // grayscale value
-                sum += v;
-                sumSq += v * v;
-                if (v > 240) bright++;
-            }
-
-            const mean = sum / len;
-            const variance = (sumSq / len) - mean * mean;
-            const contrast = Math.sqrt(variance);
-            const brightRatio = bright / len;
-
-            const deltaBright = brightRatio - this.prevBrightRatio;
-            this.prevBrightRatio = brightRatio;
-
-            // Feedback loop
-            if (brightRatio > 0.35 || deltaBright > 0.1) {
-                this.gain = Math.max(0.6, this.gain - 0.12);
-                this.offset = Math.max(-120, this.offset - 8);
-            } else if (brightRatio < 0.15) {
-                this.gain = Math.min(3.2, this.gain + 0.15);
-                this.offset = Math.min(40, this.offset + 6);
-            } else if (contrast < 18) {
-                this.gain = Math.min(2.8, this.gain + 0.08);
-            }
-
-            // Aggressive search if failing
-            this.failStreak++;
-            if (this.failStreak > 12) {
-                this.gain *= 1.08;
-                this.offset -= 5;
-            }
-
-            // Clamp
-            this.gain = Math.max(0.5, Math.min(3.5, this.gain));
-            this.offset = Math.max(-140, Math.min(60, this.offset));
-        }
-    }
-
-    const controllers = {
-        r: new SmartController(),
-        g: new SmartController(),
-        b: new SmartController()
-    };
-
-    // === ALGORITHMS ===
-    function applySCIMath(data, ch, ctrl) {
+    // === ALGORITHMS (Unchanged) ===
+    
+    function applySCIMath(data, ch, cfg) {
         const d = data.data;
-        const k1 = ctrl.k1, k2 = ctrl.k2;
-        const gain = ctrl.gain, offset = ctrl.offset;
+        const k1 = cfg.k1, k2 = cfg.k2;
+        const gain = cfg.gain, offset = cfg.offset;
+
+        // Support both uppercase (from new loop) and lowercase keys
+        const chKey = ch.toLowerCase();
 
         for (let i = 0; i < d.length; i += 4) {
             const r = d[i], g = d[i+1], b = d[i+2];
-            let target = ch === 'r' ? r : (ch === 'g' ? g : b);
-            let n1 = ch === 'r' ? g : (ch === 'g' ? r : r);
-            let n2 = ch === 'r' ? b : (ch === 'g' ? b : g);
+            let target = chKey === 'r' ? r : (chKey === 'g' ? g : b);
+            let n1 = chKey === 'r' ? g : (chKey === 'g' ? r : r);
+            let n2 = chKey === 'r' ? b : (chKey === 'g' ? b : g);
 
             let res = (target - (n1 * k1 + n2 * k2)) * gain + offset;
             res = Math.max(0, Math.min(255, res));
@@ -440,123 +381,141 @@
         }
         return new ImageData(output, w, h);
     }
+    
+    function getOscParam(t, period, min, max) {
+        const val = (Math.sin(t / period) + 1) / 2; // 0 to 1
+        return min + val * (max - min);
+    }
 
-    // === MAIN LOOP ===
-    function processLoop() {
-        if (!state.scanning) return;
+    // === NEW LOGIC IMPLEMENTATION ===
 
-        // Frame skip logic
-        state.frameSkip = (state.frameSkip + 1) % (state.FRAME_SKIP_MAX + 1);
-        if (state.frameSkip !== 0) {
-            requestAnimationFrame(processLoop);
-            return;
-        }
-
-        // Get Frame
-        let currentImageData = null;
-        if (els.video.readyState >= 2) {
-            // Draw video to main canvas for processing
-            // Use the smaller dimension for square crop
+    function getSourceData() {
+        // 1. Video Stream
+        if (els.video.readyState >= 2 && !els.video.classList.contains('hidden')) {
             const vw = els.video.videoWidth, vh = els.video.videoHeight;
             const size = Math.min(vw, vh);
-            // Draw centered crop to canvas (512x512)
+            if (size <= 0) return null;
+            // Draw to main canvas context (els.ctx) to grab data
             els.ctx.drawImage(els.video, (vw-size)/2, (vh-size)/2, size, size, 0, 0, 512, 512);
-            currentImageData = els.ctx.getImageData(0, 0, 512, 512);
+            return els.ctx.getImageData(0, 0, 512, 512);
         }
+        // 2. Freeze Frame (File Upload)
+        else if (!els.freeze.classList.contains('hidden')) {
+            return els.fCtx.getImageData(0, 0, 512, 512);
+        }
+        return null;
+    }
 
-        if (!currentImageData) {
+    function processLoop(timestamp) {
+        if (!state.scanning) return;
+
+        // Optimization: 10-15 scans per second limit
+        if (timestamp - lastFrameTime < 1000 / FPS_LIMIT) {
+            requestAnimationFrame(processLoop);
+            return;
+        }
+        lastFrameTime = timestamp;
+
+        let sourceCopy = getSourceData(); 
+        if (!sourceCopy) {
             requestAnimationFrame(processLoop);
             return;
         }
 
-        // Progress Bar Update
+        // Determine active channels (not locked)
+        const activeChannels = ['R', 'G', 'B'].filter(ch => !state.locked[ch.toLowerCase()]);
+        if (activeChannels.length === 0) {
+            stopScanning(); // All done
+            return;
+        }
+
+        // Round-robin: select ONE channel for this frame
+        const ch = activeChannels[state.time % activeChannels.length];
+        
+        // Progress Bar Logic (visual only)
         if (state.accumulationStart) {
             const elapsed = Date.now() - state.accumulationStart;
             const percent = Math.min(100, (elapsed / state.ACC_DURATION) * 100);
             els.progressFill.style.width = percent + '%';
-            
             if (elapsed > state.ACC_DURATION) {
-                // Stop if time runs out
                 stopScanning();
                 return;
             }
         }
 
-        // Round-Robin
-        const channels = ['r', 'g', 'b'];
-        const chKey = channels[state.currentChannelIndex];
-        state.currentChannelIndex = (state.currentChannelIndex + 1) % 3;
+        if (state.activeSearch) {
+            state.time++;
+            const cfg = state.config[ch];
+            cfg.gain = getOscParam(state.time, 100, 0.5, 3.5);
+            cfg.offset = getOscParam(state.time, 250, -80, 0);
 
-        if (state.locked[chKey]) {
-            requestAnimationFrame(processLoop);
-            return;
-        }
-
-        const ctrl = controllers[chKey];
-        const chIdx = chKey === 'r' ? 0 : (chKey === 'g' ? 1 : 2);
-        let processed = null;
-
-        // Hybrid Logic
-        if (ctrl.failStreak < 8) {
-            processed = applyBradleyStandard(currentImageData, chIdx);
-            // HUD: Passive/Hunting
-            if (!els.viewfinder.classList.contains('viewfinder-hunting')) {
-                els.viewfinder.classList.remove('viewfinder-locked');
-                els.viewfinder.classList.add('viewfinder-hunting');
-            }
+            let workData = new ImageData(new Uint8ClampedArray(sourceCopy.data), 512, 512);
+            applySCIMath(workData, ch, cfg);
+            let mono = applyBradleyStandard(workData, 0); // Processed result is grayscale
+            
+            const code = jsQR(mono.data, 512, 512, { inversionAttempts: "attemptBoth" });
+            if (code) lockChannel(ch, code.data);
+            
+            // Visualization: Show processed layer on main canvas
+            els.ctx.putImageData(workData, 0, 0); 
         } else {
-            // Active Search + SCI
-            if (!workBuffer) workBuffer = new Uint8ClampedArray(currentImageData.data);
-            workBuffer.set(currentImageData.data);
+            // Standard Mode (one channel per frame)
+            const idx = ['R', 'G', 'B'].indexOf(ch);
+            const mono = applyBradleyStandard(sourceCopy, idx);
+            const code = jsQR(mono.data, 512, 512, { inversionAttempts: "attemptBoth" });
             
-            const tempData = new ImageData(workBuffer, 512, 512);
-            applySCIMath(tempData, chKey, ctrl);
-            processed = applyBradleyStandard(tempData, 0); // result is grayscale
+            if (code) {
+                lockChannel(ch, code.data);
+            } else {
+                state.standardFailCount++;
+            }
             
-            ctrl.updateMetrics(processed);
-            
-            // Visual Feedback (show processed data)
-            els.ctx.putImageData(processed, 0, 0);
+            // Visualization: Show source
+            els.ctx.putImageData(sourceCopy, 0, 0);
         }
 
-        const code = jsQR(processed.data, 512, 512, { inversionAttempts: "attemptBoth" });
-
-        if (code) {
-            lockChannel(chKey, code.data);
+        // Trigger switch to Active Search if standard fails too many times
+        if (state.standardFailCount > state.AUTO_TRIGGER_THRESHOLD) {
+            state.activeSearch = true;
+            console.log("Switching to Active Search mode...");
         }
 
         requestAnimationFrame(processLoop);
     }
 
     function lockChannel(ch, data) {
-        if(state.locked[ch]) return; // Prevent re-locking
+        // FIX: Normalize case for state and UI access
+        const chKey = ch.toLowerCase(); 
 
-        state.locked[ch] = true;
-        state.results[ch] = data;
+        if(state.locked[chKey]) return;
 
-        // UI Flash
+        state.locked[chKey] = true;
+        state.results[chKey] = data;
+
+        // UI Feedback
         playBeep();
         flashScreen();
+        
+        // Visual feedback on viewfinder
         els.viewfinder.classList.remove('viewfinder-hunting');
         els.viewfinder.classList.add('viewfinder-locked');
         setTimeout(() => els.viewfinder.classList.remove('viewfinder-locked'), 300);
 
-        // Fill Input
-        const el = els[ch];
+        // Update Input Field
+        const el = els[chKey]; // using lowercase key
         el.value = data;
-        el.classList.add('locked', 'locked-'+ch);
+        el.classList.add('locked', 'locked-'+chKey);
 
-        // Start Accumulation Timer if first lock
+        // Start timer on first lock
         if (!state.accumulationStart) {
             state.accumulationStart = Date.now();
             els.progress.classList.add('progress-active');
         }
 
-        // Check if all locked
+        // Check completion
         if (state.locked.r && state.locked.g && state.locked.b) {
             console.log("All channels decoded!");
             stopScanning();
-            // Generate final QR in main canvas
             generateQR(); 
         }
     }
@@ -586,13 +545,12 @@
     function initScanMode() {
         els.initActions.classList.add('hidden');
         els.scanActions.classList.remove('hidden');
-        // Auto-start camera? No, let user choose.
     }
 
     async function startCamera() {
-        globalReset(); // Clear previous data
-        els.viewfinder.classList.remove('hidden'); // Show HUD
-        els.progress.classList.remove('progress-active'); // Hide progress initially
+        globalReset(); 
+        els.viewfinder.classList.remove('hidden'); 
+        els.progress.classList.remove('progress-active'); 
         els.progressFill.style.width = '0%';
         els.saveBtn.classList.add('hidden');
 
@@ -601,10 +559,13 @@
             els.video.srcObject = s; 
             els.video.play();
             els.video.classList.remove('hidden');
-            els.main.classList.add('hidden'); // Hide canvas when video active
+            els.main.classList.remove('hidden'); // Canvas used for drawing
             els.freeze.classList.add('hidden');
 
             state.scanning = true;
+            state.activeSearch = false; // Start in standard mode
+            state.standardFailCount = 0;
+            
             requestAnimationFrame(processLoop);
         } catch(e) { alert("Camera Error: " + e); }
     }
@@ -616,12 +577,9 @@
         els.viewfinder.classList.add('hidden');
         els.progress.classList.remove('progress-active');
         els.video.classList.add('hidden');
-        els.main.classList.remove('hidden');
         
-        // If we have results, show save button
         if (state.locked.r || state.locked.g || state.locked.b) {
             els.saveBtn.classList.remove('hidden');
-            // Flash the main canvas to show result
             generateQR();
         }
     }
@@ -632,67 +590,33 @@
         
         globalReset();
         els.viewfinder.classList.remove('hidden');
-        els.progress.classList.add('progress-active'); // Start progress visual immediately for file
-        state.accumulationStart = Date.now(); // Simulate accumulation timer
+        els.progress.classList.add('progress-active'); 
+        state.accumulationStart = Date.now(); 
 
         const reader = new FileReader();
         reader.onload = (ev) => {
             const img = new Image();
             img.onload = () => {
-                const s = 512; // Process size
+                const s = 512; 
                 els.freeze.width = s; els.freeze.height = s;
                 const ctx = els.fCtx;
                 
-                // Draw centered crop
                 const min = Math.min(img.width, img.height);
                 ctx.drawImage(img, (img.width-min)/2, (img.height-min)/2, min, min, 0, 0, s, s);
                 
                 els.freeze.classList.remove('hidden');
-                els.main.classList.add('hidden');
+                els.main.classList.remove('hidden');
                 els.video.classList.add('hidden');
 
-                // Run process loop manually for static image
-                // We need to loop until all found or time out.
-                // Hack: set scanning true, but override frame source in loop logic
-                // For simplicity, let's just process once here for the file
+                // Start processing loop for static image
+                state.scanning = true;
+                state.activeSearch = false; // Try standard first
+                state.standardFailCount = 0;
                 
-                const imageData = ctx.getImageData(0, 0, s, s);
-                
-                // Try all channels
-                let foundAny = false;
-                ['r', 'g', 'b'].forEach(ch => {
-                    if(state.locked[ch]) return;
-                    const idx = ch === 'r' ? 0 : (ch === 'g' ? 1 : 2);
-                    const ctrl = controllers[ch];
-                    
-                    // Try Standard
-                    let proc = applyBradleyStandard(imageData, idx);
-                    let code = jsQR(proc.data, s, s, { inversionAttempts: "attemptBoth" });
-                    
-                    if(!code) {
-                        // Try SCI
-                        if (!workBuffer) workBuffer = new Uint8ClampedArray(imageData.data);
-                        workBuffer.set(imageData.data);
-                        const tempData = new ImageData(workBuffer, s, s);
-                        applySCIMath(tempData, ch, ctrl);
-                        proc = applyBradleyStandard(tempData, 0);
-                        code = jsQR(proc.data, s, s, { inversionAttempts: "attemptBoth" });
-                    }
-
-                    if(code) {
-                        lockChannel(ch, code.data);
-                        foundAny = true;
-                    }
-                });
-
-                if(foundAny) {
-                   generateQR();
-                   els.saveBtn.classList.remove('hidden');
-                }
-                
-                els.viewfinder.classList.add('hidden');
-                els.progress.classList.remove('progress-active');
-                els.freeze.classList.remove('hidden'); // Show the image
+                // If we want immediate feedback, we can force activeSearch or run loop once
+                // But processLoop handles it. We just need to trigger it.
+                // Since processLoop expects video normally, getSourceData handles freeze-frame.
+                requestAnimationFrame(processLoop);
             };
             img.src = ev.target.result;
         };
@@ -700,7 +624,7 @@
     }
 
     function globalReset() {
-        stopCamera(); 
+        if(state.scanning) stopCamera(); 
         els.r.value = ""; els.g.value = ""; els.b.value = "";
         els.r.classList.remove('locked', 'locked-r');
         els.g.classList.remove('locked', 'locked-g');
@@ -709,11 +633,16 @@
         state.locked = {r:false, g:false, b:false};
         state.results = {r:null, g:null, b:null};
         state.accumulationStart = null;
-        state.currentChannelIndex = 0;
+        state.time = 0;
+        state.activeSearch = false;
+        state.standardFailCount = 0;
 
-        controllers.r = new SmartController();
-        controllers.g = new SmartController();
-        controllers.b = new SmartController();
+        // Reset configs
+        state.config = {
+            R: { gain: 1.0, offset: 0, k1: 0.15, k2: 0.25 },
+            G: { gain: 1.0, offset: 0, k1: 0.15, k2: 0.25 },
+            B: { gain: 1.0, offset: 0, k1: 0.15, k2: 0.25 }
+        };
         
         generateQR(); 
         els.saveBtn.classList.add('hidden');
@@ -721,7 +650,6 @@
         els.video.classList.add('hidden');
         els.main.classList.remove('hidden');
         
-        // Reset buttons
         els.initActions.classList.remove('hidden');
         els.scanActions.classList.add('hidden');
     }
@@ -735,7 +663,10 @@
     function generateQR() {
         const texts = [els.r.value, els.g.value, els.b.value];
         if (!texts.some(t => t.trim())) {
-            els.main.style.opacity = 0.1;
+            // Don't hide canvas if we just scanned something
+            if (!state.locked.r && !state.locked.g && !state.locked.b) {
+                 els.main.style.opacity = 0.1;
+            }
             els.saveBtn.classList.add('hidden');
             return;
         }
