@@ -1,156 +1,336 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="uk">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RGB-11: Accumulative Scanner</title>
-    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#050505">
+    <link rel="apple-touch-icon" href="./icon-192.png">
+    <link rel="icon" type="image/png" href="./icon-192.png">
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js');
+        });
+      }
+    </script>
+    
+    <title>QRGB-13: SCI Multi-Layer Encoder</title>
+    <meta name="description" content="Encode 3 QR codes in 1 image. Spectral separation via SCI Model.">
+    <link rel="canonical" href="https://astra31415926.github.io/QR.G.B.-ART/">
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800;900&display=swap" rel="stylesheet">
     <style>
         :root {
-            --r-color: #FF004D; --g-color: #00FF41; --b-color: #0088FF; --bg-color: #050505;
+            --r-color: #FF004D;
+            --g-color: #00FF41;
+            --b-color: #0088FF;
+            --bg-color: #050505;
         }
-        body { background: var(--bg-color); color: #fff; font-family: 'Inter', sans-serif; margin: 0; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
         
-        /* Main Canvas Container - Full Focus */
-        .canvas-container {
-            flex: 1; display: flex; justify-content: center; align-items: center; position: relative;
-            background: radial-gradient(circle at 50% 50%, #111, #000);
+        body { 
+            background: var(--bg-color); 
+            color: #fff; 
+            font-family: 'Inter', system-ui, sans-serif; 
+            overflow-x: hidden;
+            transition: background 0.5s;
         }
-        #qr-main { width: 100%; height: 100%; object-fit: contain; }
-        #video { display: none; position: absolute; width: 100%; height: 100%; object-fit: cover; }
-        #freeze-frame { display: none; position: absolute; width: 100%; height: 100%; object-fit: contain; background: #000; }
-
-        /* Bottom Input Panel - Semi-transparent */
-        .input-panel {
-            position: fixed; bottom: 0; left: 0; right: 0;
-            background: rgba(10, 10, 10, 0.85); backdrop-filter: blur(12px);
-            padding: 20px 16px 30px; border-top: 1px solid rgba(255,255,255,0.1);
-            transform: translateY(100%); transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-            z-index: 20;
-        }
-        .input-panel.show { transform: translateY(0); }
-
-        .input-grid { display: flex; gap: 10px; }
-        .input-box { flex: 1; position: relative; }
-        .input-box textarea {
-            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
-            color: #fff; resize: none; width: 100%; height: 40px; border-radius: 8px;
-            padding: 8px 12px; font-size: 12px; text-align: center; transition: all 0.2s;
-        }
-        .input-box textarea:focus { outline: none; border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); }
         
-        /* Indicators */
-        .indicator {
-            position: absolute; top: -6px; right: -4px;
-            width: 10px; height: 10px; border-radius: 50%; background: #333;
-            border: 2px solid var(--bg-color); transition: all 0.2s;
-        }
-        .indicator.r.active { background: var(--r-color); box-shadow: 0 0 8px var(--r-color); }
-        .indicator.g.active { background: var(--g-color); box-shadow: 0 0 8px var(--g-color); }
-        .indicator.b.active { background: var(--b-color); box-shadow: 0 0 8px var(--b-color); }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
 
-        /* Button & Controls */
-        .scan-btn {
-            position: absolute; bottom: 20%; left: 50%; transform: translateX(-50%);
-            padding: 14px 40px; background: #fff; color: #000; font-weight: 800;
-            border-radius: 30px; font-size: 16px; border: none; box-shadow: 0 0 20px rgba(255,255,255,0.2);
-            transition: all 0.3s; z-index: 10;
+        textarea {
+            background: rgba(20, 20, 20, 0.8);
+            border: 2px solid rgba(255,255,255,0.1);
+            color: #fff;
+            font-family: 'Inter', sans-serif;
+            resize: none;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(10px);
         }
-        .scan-btn:active { transform: translateX(-50%) scale(0.95); }
-        .scan-btn.hidden { opacity: 0; pointer-events: none; transform: translateX(-50%) scale(0.8); }
+        textarea:focus { 
+            outline: none; 
+            border-color: rgba(255,255,255,0.4);
+            background: rgba(30, 30, 30, 0.9);
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+        textarea.locked {
+            opacity: 0.8;
+            font-weight: 600;
+        }
+        textarea.locked-r { border-color: var(--r-color); box-shadow: 0 0 10px rgba(255,0,77,0.3); }
+        textarea.locked-g { border-color: var(--g-color); box-shadow: 0 0 10px rgba(0,255,65,0.3); }
+        textarea.locked-b { border-color: var(--b-color); box-shadow: 0 0 10px rgba(0,136,255,0.3); }
 
-        /* Flash Effects */
-        .flash-layer { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 50; }
-        .flash-layer.success { animation: flashSuccess 0.6s ease-out; }
-        .flash-layer.fail { animation: flashFail 0.4s ease-out; background: #ff004d; }
+        /* Header Logo Colors */
+        .logo-q, .logo-dash { color: #fff; text-shadow: 0 0 15px rgba(255,255,255,0.8); }
+        .logo-r { color: var(--r-color); text-shadow: 0 0 15px var(--r-color); }
+        .logo-g { color: var(--g-color); text-shadow: 0 0 15px var(--g-color); }
+        .logo-b { color: var(--b-color); text-shadow: 0 0 15px var(--b-color); }
+
+        /* Viewfinder HUD */
+        .viewfinder-corners {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 15;
+            transition: all 0.3s;
+        }
+        .corner {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border-color: rgba(255,255,255,0.3);
+            transition: all 0.3s;
+        }
+        .tl { top: 0; left: 0; border-top: 3px solid; border-left: 3px solid; border-radius: 8px 0 0 0; }
+        .tr { top: 0; right: 0; border-top: 3px solid; border-right: 3px solid; border-radius: 0 8px 0 0; }
+        .bl { bottom: 0; left: 0; border-bottom: 3px solid; border-left: 3px solid; border-radius: 0 0 0 8px; }
+        .br { bottom: 0; right: 0; border-bottom: 3px solid; border-right: 3px solid; border-radius: 0 0 8px 0; }
         
-        @keyframes flashSuccess { 0% { opacity: 0; } 30% { opacity: 0.8; } 100% { opacity: 0; } }
-        @keyframes flashFail { 0% { opacity: 0; } 20% { opacity: 0.5; } 100% { opacity: 0; } }
+        /* State: Hunting (Pulse) */
+        .viewfinder-hunting .corner { 
+            border-color: var(--g-color); 
+            box-shadow: 0 0 8px var(--g-color);
+            animation: pulse 1.5s infinite alternate; 
+        }
+        
+        /* State: Locked (Flash) */
+        .viewfinder-locked .corner { 
+            border-color: #fff; 
+            box-shadow: 0 0 20px #fff; 
+            width: 30px; height: 30px;
+        }
+
+        @keyframes pulse { 
+            0% { opacity: 0.4; transform: scale(1); } 
+            100% { opacity: 1; transform: scale(1.05); } 
+        }
+        
+        @keyframes flash { 
+            0% { opacity: 0; } 
+            20% { opacity: 0.9; } 
+            100% { opacity: 0; } 
+        }
+        .flash-anim { animation: flash 0.4s ease-out; }
 
         /* Progress Bar */
-        .progress-bar {
-            position: absolute; top: 0; left: 0; height: 3px; background: var(--g-color);
-            width: 0%; box-shadow: 0 0 10px var(--g-color); transition: width 0.1s linear; z-index: 15;
+        .progress-track {
+            position: absolute;
+            top: -8px; left: 0; right: 0;
+            height: 3px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+            overflow: hidden;
+            opacity: 0;
+            transition: opacity 0.3s;
         }
+        .progress-active { opacity: 1; }
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--b-color), var(--g-color), var(--r-color));
+            transition: width 0.1s linear;
+        }
+
+        /* Buttons */
+        .btn-scan {
+            background: linear-gradient(145deg, #fff, #ccc);
+            color: #000;
+            box-shadow: 0 0 20px rgba(255,255,255,0.2);
+            transition: all 0.2s;
+        }
+        .btn-scan:active { transform: scale(0.96); box-shadow: inset 2px 2px 5px #999; }
+        
+        .btn-mode {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            transition: all 0.2s;
+        }
+        .btn-mode:active { transform: scale(0.96); background: rgba(255,255,255,0.1); }
+
+        /* Dropdown */
+        .dropdown-menu { 
+            transform: translateY(-10px); opacity: 0; visibility: hidden; 
+            transition: all 0.2s ease; 
+        }
+        .dropdown-menu.show { transform: translateY(0); opacity: 1; visibility: visible; }
+        
+        .modal-overlay { 
+            opacity: 0; visibility: hidden; transition: all 0.3s ease; 
+            background: rgba(0,0,0,0.85); backdrop-filter: blur(20px); 
+        }
+        .modal-overlay.show { opacity: 1; visibility: visible; }
+        .modal-content { transform: scale(0.95); transition: transform 0.3s ease; }
+        .modal-overlay.show .modal-content { transform: scale(1); }
     </style>
 </head>
-<body>
+<body class="flex flex-col min-h-screen p-4 pb-6">
+    <input type="file" id="cameraInput" accept="image/*" capture="camera" style="display: none;">
+    <input type="file" id="galleryInput" accept="image/*" style="display: none;">
+    <input type="file" id="file-input" accept="image/*" class="hidden">
 
-    <!-- Main Canvas -->
-    <div class="canvas-container">
-        <canvas id="qr-main" width="512" height="512"></canvas>
-        <video id="video" playsinline autoplay muted></video>
-        <canvas id="freeze-frame"></canvas>
-        <div class="progress-bar" id="progress-bar"></div>
-        <div class="flash-layer" id="flash-layer"></div>
-        
-        <button id="btn-scan" class="scan-btn" onclick="startSession()">SCAN</button>
-    </div>
-
-    <!-- Bottom Panel -->
-    <div class="input-panel" id="input-panel">
-        <div class="input-grid">
-            <div class="input-box">
-                <div class="indicator r" id="ind-r"></div>
-                <textarea id="r-text" placeholder="RED" readonly></textarea>
-            </div>
-            <div class="input-box">
-                <div class="indicator g" id="ind-g"></div>
-                <textarea id="g-text" placeholder="GREEN" readonly></textarea>
-            </div>
-            <div class="input-box">
-                <div class="indicator b" id="ind-b"></div>
-                <textarea id="b-text" placeholder="BLUE" readonly></textarea>
+    <!-- Header -->
+    <header class="flex items-center justify-between mb-4 relative z-50">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-zinc-800 border border-white/10 flex items-center justify-center text-xs font-mono text-zinc-500">SCI</div>
+            <div class="flex flex-col">
+                <h1 class="text-2xl font-black tracking-tighter flex gap-0.5">
+                    <span class="logo-q">Q</span><span class="logo-r">R</span><span class="logo-g">G</span><span class="logo-b">B</span><span class="logo-dash">-13</span>
+                </h1>
+                <span class="text-[8px] text-zinc-500 font-mono tracking-widest uppercase">SCI Engine v2.0</span>
             </div>
         </div>
-        <div class="flex justify-center mt-4 gap-4">
-            <button onclick="globalReset()" class="text-xs text-zinc-400 border border-zinc-700 px-4 py-1 rounded-full">RESET</button>
-            <button onclick="saveResult()" class="text-xs text-green-400 border border-green-700 px-4 py-1 rounded-full opacity-0 transition-opacity" id="btn-save">SAVE</button>
+        
+        <div class="flex items-center gap-2">
+            <button id="menu-btn" class="w-10 h-10 flex items-center justify-center text-white text-xl active:scale-90 transition-transform">☰</button>
+        </div>
+        
+        <div id="dropdown" class="dropdown-menu absolute top-full right-0 mt-2 w-56 bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl z-50 overflow-hidden">
+            <div class="flex border-b border-white/10 p-1 bg-zinc-800/50">
+                <button onclick="setLanguage('uk')" class="flex-1 py-2 text-[10px] font-bold text-zinc-400 hover:text-white transition-colors border-r border-white/5">🇺🇦 UK</button>
+                <button onclick="setLanguage('en')" class="flex-1 py-2 text-[10px] font-bold text-zinc-400 hover:text-white transition-colors">🇬🇧 EN</button>
+            </div>
+            <div class="py-0">
+                <a href="#" onclick="openModal('usage')" class="block px-4 py-3.5 text-xs text-zinc-300 hover:bg-zinc-800 border-b border-white/5">Як користуватися</a>
+                <a href="#" onclick="openModal('tech')" class="block px-4 py-3.5 text-xs text-zinc-300 hover:bg-zinc-800 border-b border-white/5">Технологія</a>
+                <a href="#" onclick="const vcard='BEGIN:VCARD\nVERSION:3.0\nFN:Mykhailo Kashkarov\nEMAIL:bakminsterfuler@gmail.com\nEND:VCARD'; const blob=new Blob([vcard],{type:'text/vcard'}); const url=window.URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='Contact.vcf'; a.click(); window.URL.revokeObjectURL(url); return false;" class="block px-4 py-3.5 text-xs text-blue-400 hover:bg-zinc-800 border-b border-white/5">Скачати vCard</a>
+                <button onclick="globalReset()" class="w-full text-left px-4 py-3.5 text-xs text-red-400 hover:bg-zinc-800 font-bold uppercase tracking-wide">Reset All</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Input Section (Top) -->
+    <div class="input-section space-y-2 mb-4 px-1">
+        <div class="relative">
+            <div class="absolute left-0 top-0 bottom-0 w-1 bg-red-600 rounded-full"></div>
+            <textarea id="r-text" class="w-full p-3 pl-4 rounded-xl outline-none h-12 text-sm font-medium" placeholder="RED CHANNEL"></textarea>
+        </div>
+        <div class="relative">
+            <div class="absolute left-0 top-0 bottom-0 w-1 bg-green-600 rounded-full"></div>
+            <textarea id="g-text" class="w-full p-3 pl-4 rounded-xl outline-none h-12 text-sm font-medium" placeholder="GREEN CHANNEL"></textarea>
+        </div>
+        <div class="relative">
+            <div class="absolute left-0 top-0 bottom-0 w-1 bg-blue-600 rounded-full"></div>
+            <textarea id="b-text" class="w-full p-3 pl-4 rounded-xl outline-none h-12 text-sm font-medium" placeholder="BLUE (PRIORITY)"></textarea>
+        </div>
+    </div>
+
+    <!-- Central Block (Scanner / QR Display) -->
+    <div class="central-block flex-1 flex flex-col items-center justify-center relative">
+        <div id="central-container" class="relative w-full max-w-xs aspect-square bg-zinc-950 rounded-3xl p-4 border border-white/5 shadow-2xl overflow-hidden">
+            
+            <!-- Progress Bar -->
+            <div id="progress-track" class="progress-track">
+                <div id="progress-fill" class="progress-fill"></div>
+            </div>
+            
+            <!-- Ambient Glow -->
+            <div class="absolute inset-0 opacity-20 pointer-events-none" style="background: radial-gradient(circle at 20% 20%, #FF004D 0%, transparent 40%), radial-gradient(circle at 80% 80%, #0088FF 0%, transparent 40%);"></div>
+            
+            <!-- Canvases -->
+            <canvas id="qr-main" width="512" height="512" class="w-full h-full transition-all duration-500 relative z-10"></canvas>
+            <video id="video" class="absolute inset-0 w-full h-full object-cover hidden z-10" playsinline></video>
+            <canvas id="freeze-frame" width="512" height="512" class="absolute inset-0 w-full h-full object-cover hidden z-12"></canvas>
+            
+            <!-- Viewfinder HUD -->
+            <div class="viewfinder-corners hidden" id="viewfinder-ui">
+                <div class="corner tl"></div><div class="corner tr"></div>
+                <div class="corner bl"></div><div class="corner br"></div>
+            </div>
+            
+            <div id="flash-layer" class="absolute inset-0 bg-white opacity-0 pointer-events-none z-50"></div>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="mt-6 space-y-3">
+        <button id="save-btn" onclick="saveQR()" class="w-full py-3 bg-white text-black font-bold rounded-2xl hidden active:scale-95 text-sm tracking-widest uppercase shadow-lg shadow-white/20">Save Result</button>
+        
+        <div id="init-actions">
+            <button id="scan-main-btn" onclick="initScanMode()" class="w-full py-4 btn-scan font-bold rounded-2xl text-lg tracking-widest uppercase">
+                SCAN
+            </button>
+        </div>
+
+        <div id="scan-actions" class="hidden grid grid-cols-2 gap-3">
+            <button onclick="startCamera()" class="py-3.5 btn-mode text-white font-semibold rounded-2xl active:scale-95 text-xs uppercase tracking-wider flex items-center justify-center gap-2">
+                <span>Камера</span>
+            </button>
+            <button onclick="document.getElementById('file-input').click()" class="py-3.5 btn-mode text-white font-semibold rounded-2xl active:scale-95 text-xs uppercase tracking-wider flex items-center justify-center gap-2">
+                <span>Галерея</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="mt-8 border-t border-white/5 pt-6 pb-4 text-center">
+        <p class="text-[10px] text-zinc-500 font-bold tracking-widest uppercase mb-4">Mykhailo Kashkarov | Science-Art Researcher</p>
+        <div class="flex justify-center gap-6 mb-4 text-zinc-600 text-xs">
+            <a href="https://www.youtube.com/@Michael-RGB-ART" class="hover:text-white">YT</a>
+            <a href="https://zenodo.org/records/18895764" class="hover:text-blue-400">Zenodo</a>
+        </div>
+        <p class="text-[8px] text-zinc-600">© 2026 SCI Universal Model. All Rights Reserved.</p>
+    </footer>
+
+    <!-- Modal -->
+    <div id="modal-overlay" class="modal-overlay fixed inset-0 z-[200] flex items-center justify-center p-6">
+        <div class="modal-content w-full max-w-md bg-zinc-900/95 border border-white/10 rounded-3xl p-6 shadow-2xl relative max-h-[80vh] overflow-y-auto backdrop-blur-xl">
+            <button onclick="closeModal()" class="absolute top-4 right-4 text-zinc-500 hover:text-white text-xs font-bold border border-white/10 px-3 py-1 rounded-lg hover:bg-zinc-800 transition-colors">CLOSE</button>
+            <h2 id="modal-title" class="text-lg font-bold mb-4"></h2>
+            <div id="modal-body" class="text-sm text-zinc-300 space-y-4 leading-relaxed"></div>
         </div>
     </div>
 
 <script>
-    // === 1. STATE & CONFIG ===
+    // === TRANSLATIONS & UI SETUP ===
+    const translations = {
+        uk: { ph_r: "RED CHANNEL", ph_g: "GREEN CHANNEL", ph_b: "BLUE CHANNEL" },
+        en: { ph_r: "RED CHANNEL", ph_g: "GREEN CHANNEL", ph_b: "BLUE CHANNEL" }
+    };
+    let currentLang = 'uk';
+
+    // === DOM ELEMENTS ===
+    const els = {
+        r: document.getElementById('r-text'), 
+        g: document.getElementById('g-text'), 
+        b: document.getElementById('b-text'),
+        main: document.getElementById('qr-main'), 
+        ctx: document.getElementById('qr-main').getContext('2d', { willReadFrequently: true }),
+        video: document.getElementById('video'), 
+        freeze: document.getElementById('freeze-frame'),
+        fCtx: document.getElementById('freeze-frame').getContext('2d', { willReadFrequently: true }),
+        centralContainer: document.getElementById('central-container'), 
+        flash: document.getElementById('flash-layer'),
+        viewfinder: document.getElementById('viewfinder-ui'),
+        progress: document.getElementById('progress-track'),
+        progressFill: document.getElementById('progress-fill'),
+        scanMainBtn: document.getElementById('scan-main-btn'),
+        initActions: document.getElementById('init-actions'),
+        scanActions: document.getElementById('scan-actions'),
+        saveBtn: document.getElementById('save-btn'),
+        dropdown: document.getElementById('dropdown')
+    };
+
+    // === CORE STATE (New Logic) ===
     const state = {
         scanning: false,
         locked: { r: false, g: false, b: false },
         results: { r: null, g: null, b: null },
-        currentChannelIndex: 0, // Round-robin index
-        
-        // Accumulation Logic
-        sessionActive: false,
-        sessionStartTime: 0,
-        CAPTURE_WINDOW: 4000, // 4 seconds
-        
-        // Performance
+        currentChannelIndex: 0,     // 0=R, 1=G, 2=B для round-robin
         frameSkip: 0,
-        FRAME_SKIP_MAX: 3, // Default ~20fps processing
-        FRAME_SKIP_FAST: 0 // Max speed during session
-    };
-
-    const els = {
-        video: document.getElementById('video'),
-        canvas: document.getElementById('qr-main'),
-        ctx: document.getElementById('qr-main').getContext('2d', { willReadFrequently: true }),
-        freeze: document.getElementById('freeze-frame'),
-        fCtx: document.getElementById('freeze-frame').getContext('2d', { willReadFrequently: true }),
-        r: document.getElementById('r-text'), g: document.getElementById('g-text'), b: document.getElementById('b-text'),
-        indR: document.getElementById('ind-r'), indG: document.getElementById('ind-g'), indB: document.getElementById('ind-b'),
-        flash: document.getElementById('flash-layer'),
-        progressBar: document.getElementById('progress-bar'),
-        inputPanel: document.getElementById('input-panel'),
-        btnSave: document.getElementById('btn-save'),
-        btnScan: document.getElementById('btn-scan')
+        FRAME_SKIP_MAX: 3,
+        accumulationStart: null,
+        ACC_DURATION: 4000 // 4 seconds
     };
 
     // Reusable buffers
     let workBuffer = null;
-    let sourceCopy = null;
 
-    // === 2. SMART CONTROLLER ===
+    // === SMART CONTROLLER ===
     class SmartController {
         constructor() {
             this.gain = 1.0;
@@ -163,45 +343,70 @@
 
         updateMetrics(imgData) {
             const d = imgData.data;
-            let bright = 0, sum = 0;
+            let bright = 0, sum = 0, sumSq = 0;
             const len = d.length / 4;
+
             for (let i = 0; i < d.length; i += 4) {
-                const v = d[i];
+                const v = d[i]; // grayscale value
                 sum += v;
+                sumSq += v * v;
                 if (v > 240) bright++;
             }
+
             const mean = sum / len;
+            const variance = (sumSq / len) - mean * mean;
+            const contrast = Math.sqrt(variance);
             const brightRatio = bright / len;
 
-            // Feedback Logic
-            if (brightRatio > 0.35) {
+            const deltaBright = brightRatio - this.prevBrightRatio;
+            this.prevBrightRatio = brightRatio;
+
+            // Feedback loop
+            if (brightRatio > 0.35 || deltaBright > 0.1) {
                 this.gain = Math.max(0.6, this.gain - 0.12);
                 this.offset = Math.max(-120, this.offset - 8);
             } else if (brightRatio < 0.15) {
                 this.gain = Math.min(3.2, this.gain + 0.15);
                 this.offset = Math.min(40, this.offset + 6);
+            } else if (contrast < 18) {
+                this.gain = Math.min(2.8, this.gain + 0.08);
             }
-            
+
+            // Aggressive search if failing
+            this.failStreak++;
+            if (this.failStreak > 12) {
+                this.gain *= 1.08;
+                this.offset -= 5;
+            }
+
             // Clamp
             this.gain = Math.max(0.5, Math.min(3.5, this.gain));
             this.offset = Math.max(-140, Math.min(60, this.offset));
         }
     }
 
-    const controllers = { r: new SmartController(), g: new SmartController(), b: new SmartController() };
+    const controllers = {
+        r: new SmartController(),
+        g: new SmartController(),
+        b: new SmartController()
+    };
 
-    // === 3. ALGORITHMS ===
+    // === ALGORITHMS ===
     function applySCIMath(data, ch, ctrl) {
         const d = data.data;
+        const k1 = ctrl.k1, k2 = ctrl.k2;
+        const gain = ctrl.gain, offset = ctrl.offset;
+
         for (let i = 0; i < d.length; i += 4) {
             const r = d[i], g = d[i+1], b = d[i+2];
             let target = ch === 'r' ? r : (ch === 'g' ? g : b);
             let n1 = ch === 'r' ? g : (ch === 'g' ? r : r);
             let n2 = ch === 'r' ? b : (ch === 'g' ? b : g);
 
-            let res = (target - (n1 * ctrl.k1 + n2 * ctrl.k2)) * ctrl.gain + ctrl.offset;
+            let res = (target - (n1 * k1 + n2 * k2)) * gain + offset;
             res = Math.max(0, Math.min(255, res));
-            d[i] = d[i+1] = d[i+2] = res; d[i+3] = 255;
+            d[i] = d[i+1] = d[i+2] = res;
+            d[i+3] = 255;
         }
     }
 
@@ -229,265 +434,265 @@
                 const val = input[(y * w + x) * 4 + chIdx];
                 const res = (val * count < sum * (100 - t) / 100) ? 0 : 255;
                 const idx = (y * w + x) * 4;
-                output[idx] = output[idx+1] = output[idx+2] = res; output[idx+3] = 255;
+                output[idx] = output[idx+1] = output[idx+2] = res;
+                output[idx+3] = 255;
             }
         }
         return new ImageData(output, w, h);
     }
 
-    // === 4. MAIN PROCESSING LOOP (Hybrid + Accumulation) ===
+    // === MAIN LOOP ===
     function processLoop() {
         if (!state.scanning) return;
 
-        // Frame Skipping Logic
-        state.frameSkip = (state.frameSkip + 1) % (state.sessionActive ? state.FRAME_SKIP_FAST + 1 : state.FRAME_SKIP_MAX + 1);
+        // Frame skip logic
+        state.frameSkip = (state.frameSkip + 1) % (state.FRAME_SKIP_MAX + 1);
         if (state.frameSkip !== 0) {
             requestAnimationFrame(processLoop);
             return;
         }
 
-        // 1. Get Frame Data
+        // Get Frame
         let currentImageData = null;
-        if (els.video.style.display !== 'none' && els.video.readyState >= 2) {
-            els.ctx.drawImage(els.video, 0, 0, 512, 512);
+        if (els.video.readyState >= 2) {
+            // Draw video to main canvas for processing
+            // Use the smaller dimension for square crop
+            const vw = els.video.videoWidth, vh = els.video.videoHeight;
+            const size = Math.min(vw, vh);
+            // Draw centered crop to canvas (512x512)
+            els.ctx.drawImage(els.video, (vw-size)/2, (vh-size)/2, size, size, 0, 0, 512, 512);
             currentImageData = els.ctx.getImageData(0, 0, 512, 512);
-        } else if (els.freeze.style.display !== 'none') {
-            currentImageData = els.fCtx.getImageData(0, 0, 512, 512);
         }
 
-        if (!currentImageData) { requestAnimationFrame(processLoop); return; }
+        if (!currentImageData) {
+            requestAnimationFrame(processLoop);
+            return;
+        }
 
-        // 2. Check Session Timeout
-        if (state.sessionActive) {
-            const elapsed = Date.now() - state.sessionStartTime;
-            // Update Progress Bar
-            const progress = Math.min(100, (elapsed / state.CAPTURE_WINDOW) * 100);
-            els.progressBar.style.width = `${progress}%`;
-
-            if (elapsed > state.CAPTURE_WINDOW) {
-                const lockedCount = (state.locked.r ? 1 : 0) + (state.locked.g ? 1 : 0) + (state.locked.b ? 1 : 0);
-                if (lockedCount < 3) {
-                    console.log("Session Timeout - Reset");
-                    resetSession(); // Failure
-                    requestAnimationFrame(processLoop);
-                    return;
-                }
+        // Progress Bar Update
+        if (state.accumulationStart) {
+            const elapsed = Date.now() - state.accumulationStart;
+            const percent = Math.min(100, (elapsed / state.ACC_DURATION) * 100);
+            els.progressFill.style.width = percent + '%';
+            
+            if (elapsed > state.ACC_DURATION) {
+                // Stop if time runs out
+                stopScanning();
+                return;
             }
         }
 
-        // 3. Round-Robin Channel Selection
+        // Round-Robin
         const channels = ['r', 'g', 'b'];
-        let chKey = channels[state.currentChannelIndex];
-        
-        // Skip locked channels
+        const chKey = channels[state.currentChannelIndex];
+        state.currentChannelIndex = (state.currentChannelIndex + 1) % 3;
+
         if (state.locked[chKey]) {
-             // If all locked, stop? No, keep looping for stability or stop.
-             // But logic says ignore locked. So find next unlocked.
-             let foundNext = false;
-             for(let i=0; i<3; i++) {
-                 state.currentChannelIndex = (state.currentChannelIndex + 1) % 3;
-                 chKey = channels[state.currentChannelIndex];
-                 if (!state.locked[chKey]) { foundNext = true; break; }
-             }
-             if (!foundNext) { /* All locked */ requestAnimationFrame(processLoop); return; }
-        } else {
-            state.currentChannelIndex = (state.currentChannelIndex + 1) % 3;
+            requestAnimationFrame(processLoop);
+            return;
         }
 
         const ctrl = controllers[chKey];
         const chIdx = chKey === 'r' ? 0 : (chKey === 'g' ? 1 : 2);
         let processed = null;
 
-        // 4. Hybrid Processing Strategy
+        // Hybrid Logic
         if (ctrl.failStreak < 8) {
             processed = applyBradleyStandard(currentImageData, chIdx);
+            // HUD: Passive/Hunting
+            if (!els.viewfinder.classList.contains('viewfinder-hunting')) {
+                els.viewfinder.classList.remove('viewfinder-locked');
+                els.viewfinder.classList.add('viewfinder-hunting');
+            }
         } else {
+            // Active Search + SCI
             if (!workBuffer) workBuffer = new Uint8ClampedArray(currentImageData.data);
             workBuffer.set(currentImageData.data);
-            const tempData = new ImageData(workBuffer, 512, 512);
             
+            const tempData = new ImageData(workBuffer, 512, 512);
             applySCIMath(tempData, chKey, ctrl);
-            processed = applyBradleyStandard(tempData, 0);
+            processed = applyBradleyStandard(tempData, 0); // result is grayscale
+            
             ctrl.updateMetrics(processed);
+            
+            // Visual Feedback (show processed data)
+            els.ctx.putImageData(processed, 0, 0);
         }
 
-        // 5. Decode
         const code = jsQR(processed.data, 512, 512, { inversionAttempts: "attemptBoth" });
 
-        // 6. Visualization (HUD)
-        // Clear canvas and redraw base (to clear previous HUD text)
-        els.ctx.putImageData(currentImageData, 0, 0); // Base layer
-        
         if (code) {
-            // SUCCESS FRAME (White)
-            drawFrame(code.location, '#FFFFFF', 2);
             lockChannel(chKey, code.data);
-        } else {
-            ctrl.failStreak++;
-            // SEARCHING FRAME (Gray) - Generic pulsing frame or nothing? 
-            // jsQR doesn't give location on fail. Just draw HUD text.
         }
-
-        // Draw HUD Text (Gain/Offset)
-        drawHUD(chKey, ctrl);
 
         requestAnimationFrame(processLoop);
     }
 
-    // === 5. VISUALIZATION (HUD) ===
-    function drawFrame(location, color, width) {
-        els.ctx.strokeStyle = color;
-        els.ctx.lineWidth = width;
-        els.ctx.beginPath();
-        els.ctx.moveTo(location.topLeftCorner.x, location.topLeftCorner.y);
-        els.ctx.lineTo(location.topRightCorner.x, location.topRightCorner.y);
-        els.ctx.lineTo(location.bottomRightCorner.x, location.bottomRightCorner.y);
-        els.ctx.lineTo(location.bottomLeftCorner.x, location.bottomLeftCorner.y);
-        els.ctx.closePath();
-        els.ctx.stroke();
-    }
-
-    function drawHUD(chKey, ctrl) {
-        const chName = chKey.toUpperCase();
-        const text = `[${chName}] G:${ctrl.gain.toFixed(1)} O:${ctrl.offset.toFixed(0)}`;
-        
-        els.ctx.font = '12px JetBrains Mono';
-        els.ctx.fillStyle = state.locked[chKey] ? '#00FF41' : 'rgba(255,255,255,0.5)';
-        
-        // Position text in corners based on channel
-        let x = 10, y = 20;
-        if (chKey === 'r') { x = 10; y = 20; }
-        if (chKey === 'g') { x = 10; y = 40; }
-        if (chKey === 'b') { x = 10; y = 60; }
-        
-        els.ctx.fillText(text, x, y);
-    }
-
-    // === 6. LOGIC (Accumulation) ===
     function lockChannel(ch, data) {
-        if (state.locked[ch]) return; // Already locked
+        if(state.locked[ch]) return; // Prevent re-locking
 
         state.locked[ch] = true;
         state.results[ch] = data;
-        controllers[ch].failStreak = 0; // Reset controller on success
 
-        // UI Update
+        // UI Flash
         playBeep();
+        flashScreen();
+        els.viewfinder.classList.remove('viewfinder-hunting');
+        els.viewfinder.classList.add('viewfinder-locked');
+        setTimeout(() => els.viewfinder.classList.remove('viewfinder-locked'), 300);
+
+        // Fill Input
         const el = els[ch];
-        const ind = els['ind' + ch.toUpperCase()];
-        ind.classList.add('active');
         el.value = data;
-        el.style.borderColor = ch === 'r' ? '#FF004D' : (ch === 'g' ? '#00FF41' : '#0088FF');
-        
-        // Session Logic
-        if (!state.sessionActive) {
-            startAccumulationWindow();
+        el.classList.add('locked', 'locked-'+ch);
+
+        // Start Accumulation Timer if first lock
+        if (!state.accumulationStart) {
+            state.accumulationStart = Date.now();
+            els.progress.classList.add('progress-active');
         }
 
-        // Check Win Condition
+        // Check if all locked
         if (state.locked.r && state.locked.g && state.locked.b) {
-            finalSynthesis();
+            console.log("All channels decoded!");
+            stopScanning();
+            // Generate final QR in main canvas
+            generateQR(); 
         }
     }
 
-    function startAccumulationWindow() {
-        state.sessionActive = true;
-        state.sessionStartTime = Date.now();
-        state.FRAME_SKIP_MAX = state.FRAME_SKIP_FAST; // Speed up!
-        console.log("Session Started: 4s window");
+    function playBeep() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.frequency.value = 880;
+            osc.type = 'sine';
+            gain.gain.setValueAtTime(0.1, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.2);
+        } catch(e) {}
     }
 
-    function finalSynthesis() {
-        state.scanning = false; // Stop loop
-        state.sessionActive = false;
-        
-        // Success Flash
-        els.flash.classList.add('success');
-        setTimeout(() => els.flash.classList.remove('success'), 600);
-        
-        els.btnSave.style.opacity = '1';
-        console.log("Synthesis Complete!");
+    function flashScreen() {
+        els.flash.classList.add('flash-anim');
+        setTimeout(() => els.flash.classList.remove('flash-anim'), 400);
     }
 
-    function resetSession() {
-        state.sessionActive = false;
-        state.FRAME_SKIP_MAX = 3; // Slow down
-        
-        // Red Flash
-        els.flash.classList.add('fail');
-        setTimeout(() => els.flash.classList.remove('fail'), 400);
-        
-        // Reset only unlocked channels? Or all progress?
-        // Requirement: "If time runs out... < 3 channels -> resetSession()".
-        // I will reset the 'locked' state to force retry, but keep text values.
-        ['r', 'g', 'b'].forEach(ch => {
-            if (!state.locked[ch]) return; // Only reset active attempts
-            // Actually, if we failed, we should reset everything to allow clean retry.
-            state.locked[ch] = false;
-            controllers[ch].failStreak = 0;
-            els['ind' + ch.toUpperCase()].classList.remove('active');
-            els[ch].value = "";
-            els[ch].style.borderColor = "rgba(255,255,255,0.1)";
-        });
-        
-        // Force full reset for demo purposes
-        state.locked = {r:false, g:false, b:false};
-        updateIndicators();
-    }
-
-    function updateIndicators() {
-        ['r','g','b'].forEach(ch => {
-            const ind = els['ind' + ch.toUpperCase()];
-            if(state.locked[ch]) ind.classList.add('active');
-            else ind.classList.remove('active');
-        });
-    }
-
-    // === 7. CORE FUNCTIONS ===
-    function startSession() {
-        els.btnScan.classList.add('hidden');
-        els.inputPanel.classList.add('show');
-        
-        // Try Camera first, fallback to Gallery? 
-        // Just Camera for now as per logic.
-        startCamera();
+    // === FLOW CONTROL ===
+    function initScanMode() {
+        els.initActions.classList.add('hidden');
+        els.scanActions.classList.remove('hidden');
+        // Auto-start camera? No, let user choose.
     }
 
     async function startCamera() {
+        globalReset(); // Clear previous data
+        els.viewfinder.classList.remove('hidden'); // Show HUD
+        els.progress.classList.remove('progress-active'); // Hide progress initially
+        els.progressFill.style.width = '0%';
+        els.saveBtn.classList.add('hidden');
+
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } } });
-            els.video.srcObject = stream;
+            const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: {ideal: 1280} } });
+            els.video.srcObject = s; 
             els.video.play();
-            els.video.style.display = 'block';
-            els.freeze.style.display = 'none';
-            
-            globalReset(); // Clean state
+            els.video.classList.remove('hidden');
+            els.main.classList.add('hidden'); // Hide canvas when video active
+            els.freeze.classList.add('hidden');
+
             state.scanning = true;
-            processLoop();
-        } catch (e) {
-            alert("Camera Error: " + e);
+            requestAnimationFrame(processLoop);
+        } catch(e) { alert("Camera Error: " + e); }
+    }
+
+    function stopScanning() {
+        state.scanning = false;
+        if (els.video.srcObject) els.video.srcObject.getTracks().forEach(t => t.stop());
+        
+        els.viewfinder.classList.add('hidden');
+        els.progress.classList.remove('progress-active');
+        els.video.classList.add('hidden');
+        els.main.classList.remove('hidden');
+        
+        // If we have results, show save button
+        if (state.locked.r || state.locked.g || state.locked.b) {
+            els.saveBtn.classList.remove('hidden');
+            // Flash the main canvas to show result
+            generateQR();
         }
     }
 
     function handleFile(e) {
-        const file = e.target.files[0]; if(!file) return;
+        const file = e.target.files[0]; 
+        if (!file) return;
+        
+        globalReset();
+        els.viewfinder.classList.remove('hidden');
+        els.progress.classList.add('progress-active'); // Start progress visual immediately for file
+        state.accumulationStart = Date.now(); // Simulate accumulation timer
+
         const reader = new FileReader();
         reader.onload = (ev) => {
             const img = new Image();
             img.onload = () => {
-                els.freeze.width = 512; els.freeze.height = 512;
-                const s = Math.min(img.width, img.height);
-                const sx = (img.width - s)/2, sy = (img.height - s)/2;
-                els.fCtx.drawImage(img, sx, sy, s, s, 0, 0, 512, 512);
+                const s = 512; // Process size
+                els.freeze.width = s; els.freeze.height = s;
+                const ctx = els.fCtx;
                 
-                els.freeze.style.display = 'block';
-                els.video.style.display = 'none';
-                els.btnScan.classList.add('hidden');
-                els.inputPanel.classList.add('show');
+                // Draw centered crop
+                const min = Math.min(img.width, img.height);
+                ctx.drawImage(img, (img.width-min)/2, (img.height-min)/2, min, min, 0, 0, s, s);
+                
+                els.freeze.classList.remove('hidden');
+                els.main.classList.add('hidden');
+                els.video.classList.add('hidden');
 
-                globalReset();
-                state.scanning = true;
-                processLoop();
+                // Run process loop manually for static image
+                // We need to loop until all found or time out.
+                // Hack: set scanning true, but override frame source in loop logic
+                // For simplicity, let's just process once here for the file
+                
+                const imageData = ctx.getImageData(0, 0, s, s);
+                
+                // Try all channels
+                let foundAny = false;
+                ['r', 'g', 'b'].forEach(ch => {
+                    if(state.locked[ch]) return;
+                    const idx = ch === 'r' ? 0 : (ch === 'g' ? 1 : 2);
+                    const ctrl = controllers[ch];
+                    
+                    // Try Standard
+                    let proc = applyBradleyStandard(imageData, idx);
+                    let code = jsQR(proc.data, s, s, { inversionAttempts: "attemptBoth" });
+                    
+                    if(!code) {
+                        // Try SCI
+                        if (!workBuffer) workBuffer = new Uint8ClampedArray(imageData.data);
+                        workBuffer.set(imageData.data);
+                        const tempData = new ImageData(workBuffer, s, s);
+                        applySCIMath(tempData, ch, ctrl);
+                        proc = applyBradleyStandard(tempData, 0);
+                        code = jsQR(proc.data, s, s, { inversionAttempts: "attemptBoth" });
+                    }
+
+                    if(code) {
+                        lockChannel(ch, code.data);
+                        foundAny = true;
+                    }
+                });
+
+                if(foundAny) {
+                   generateQR();
+                   els.saveBtn.classList.remove('hidden');
+                }
+                
+                els.viewfinder.classList.add('hidden');
+                els.progress.classList.remove('progress-active');
+                els.freeze.classList.remove('hidden'); // Show the image
             };
             img.src = ev.target.result;
         };
@@ -495,65 +700,104 @@
     }
 
     function globalReset() {
-        state.scanning = false;
+        stopCamera(); 
+        els.r.value = ""; els.g.value = ""; els.b.value = "";
+        els.r.classList.remove('locked', 'locked-r');
+        els.g.classList.remove('locked', 'locked-g');
+        els.b.classList.remove('locked', 'locked-b');
+        
         state.locked = {r:false, g:false, b:false};
         state.results = {r:null, g:null, b:null};
-        state.sessionActive = false;
-        state.frameSkip = 0;
+        state.accumulationStart = null;
+        state.currentChannelIndex = 0;
+
+        controllers.r = new SmartController();
+        controllers.g = new SmartController();
+        controllers.b = new SmartController();
         
-        Object.values(controllers).forEach(c => { c.gain = 1.0; c.offset = 0; c.failStreak = 0; });
+        generateQR(); 
+        els.saveBtn.classList.add('hidden');
+        els.freeze.classList.add('hidden');
+        els.video.classList.add('hidden');
+        els.main.classList.remove('hidden');
         
-        updateIndicators();
-        els.progressBar.style.width = '0%';
-        els.btnSave.style.opacity = '0';
+        // Reset buttons
+        els.initActions.classList.remove('hidden');
+        els.scanActions.classList.add('hidden');
     }
 
-    function playBeep() {
-        try {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const o = ctx.createOscillator();
-            const g = ctx.createGain();
-            o.connect(g); g.connect(ctx.destination);
-            o.frequency.value = 880; o.type = "square";
-            g.gain.setValueAtTime(0.1, ctx.currentTime);
-            g.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 0.1);
-            o.start(); o.stop(ctx.currentTime + 0.1);
-        } catch(e){}
+    function stopCamera() {
+        state.scanning = false;
+        if (els.video.srcObject) els.video.srcObject.getTracks().forEach(t => t.stop());
     }
 
-    function saveResult() {
-        // Generate Multi-QR
+    // === QR GENERATION ===
+    function generateQR() {
         const texts = [els.r.value, els.g.value, els.b.value];
-        if(!texts.some(t => t.trim())) return;
+        if (!texts.some(t => t.trim())) {
+            els.main.style.opacity = 0.1;
+            els.saveBtn.classList.add('hidden');
+            return;
+        }
+        els.main.style.opacity = 1;
         
-        const qrCtx = els.canvas.getContext('2d');
-        qrCtx.fillStyle = "#000"; qrCtx.fillRect(0,0,512,512);
-        qrCtx.globalCompositeOperation = "lighten";
+        let maxVer = 1;
+        texts.forEach(t => {
+            if(!t.trim()) return;
+            const tmp = qrcode(0, 'M'); 
+            tmp.addData(unescape(encodeURIComponent(t))); tmp.make();
+            const v = Math.floor((tmp.getModuleCount() - 17) / 4);
+            if (v > maxVer) maxVer = v;
+        });
+        
+        const ctx = els.ctx;
+        ctx.fillStyle = "#000"; ctx.fillRect(0,0,512,512);
+        ctx.globalCompositeOperation = "lighten";
         
         texts.forEach((text, i) => {
             if(!text.trim()) return;
-            const qr = qrcode(0, 'M'); qr.addData(text); qr.make();
+            const qr = qrcode(maxVer, 'M'); 
+            qr.addData(unescape(encodeURIComponent(text))); qr.make();
             const mod = 512 / qr.getModuleCount();
-            qrCtx.fillStyle = i === 0 ? "#FF0000" : (i === 1 ? "#00FF00" : "#0000FF");
-            for(let r=0; r<qr.getModuleCount(); r++){
-                for(let c=0; c<qr.getModuleCount(); c++){
-                    if(qr.isDark(r,c)) qrCtx.fillRect(c*mod, r*mod, mod, mod);
+            ctx.fillStyle = i === 0 ? "#FF0000" : (i === 1 ? "#00FF00" : "#0000FF");
+            for (let r = 0; r < qr.getModuleCount(); r++) {
+                for (let c = 0; c < qr.getModuleCount(); c++) {
+                    if (qr.isDark(r, c)) ctx.fillRect(c * mod, r * mod, mod, mod);
                 }
             }
         });
-        qrCtx.globalCompositeOperation = "source-over";
-
-        const a = document.createElement('a');
-        a.href = els.canvas.toDataURL();
-        a.download = 'rgb11_result.png';
-        a.click();
+        ctx.globalCompositeOperation = "source-over";
+        els.saveBtn.classList.remove('hidden');
     }
 
-    // Expose functions
-    window.startSession = startSession;
-    window.handleFile = handleFile;
-    window.globalReset = globalReset;
-    window.saveResult = saveResult;
+    // === UI HELPERS ===
+    function setLanguage(l) {
+        currentLang = l;
+        els.r.placeholder = translations[l].ph_r;
+        els.g.placeholder = translations[l].ph_g;
+        els.b.placeholder = translations[l].ph_b;
+    }
+
+    function openModal(t) {
+        document.getElementById('modal-overlay').classList.add('show');
+        els.dropdown.classList.remove('show');
+    }
+    function closeModal() { document.getElementById('modal-overlay').classList.remove('show'); }
+    function saveQR() { 
+        const a = document.createElement('a'); 
+        a.download = 'QRGB13_Result.png'; 
+        a.href = els.main.toDataURL(); 
+        a.click(); 
+    }
+
+    // === INIT ===
+    document.getElementById('file-input').addEventListener('change', handleFile);
+    [els.r, els.g, els.b].forEach(el => el.addEventListener('input', generateQR));
+    document.getElementById('menu-btn').onclick = (e) => { e.stopPropagation(); els.dropdown.classList.toggle('show'); };
+    document.onclick = () => els.dropdown.classList.remove('show');
+    
+    setLanguage('uk');
+    generateQR();
 
 </script>
 </body>
